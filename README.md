@@ -1,4 +1,4 @@
-# Microbit_Smart_Robot_Car
+# BitBot
 
 This extension allows the user to control the motors, ultrasonic sensor, and line sensors. There is additional servo pins and LEDs that are able to be controlled with the Neopixel and servo extensions respectively. 
 
