@@ -1,6 +1,6 @@
 //% color="#006400" weight=20 icon="\uf1b9"
 //% groups='["Motors", "Distance Sensor", "Line Reader","Headlights", "Music", "Servo"]'
-namespace mbit_Robot {
+namespace BitBot {
 
     const PCA9685_ADD = 0x41
     const MODE1 = 0x00
