@@ -370,7 +370,7 @@ namespace BitBot {
         // read pulse
         pins.setPull(DigitalPin.P15, PinPullMode.PullUp);
 
-        let d = pins.pulseIn(DigitalPin.P15, PulseValue.High, 500);
+        let d = pins.pulseIn(DigitalPin.P15, PulseValue.High, 21000);
 
         d = Math.round(d);
 
