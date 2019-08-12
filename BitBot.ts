@@ -30,6 +30,8 @@ namespace BitBot {
     const LED0_OFF_L = 0x08;
     const LED0_OFF_H = 0x09;
 
+    const LED2_OFF_L = 0x10;
+
     const ALL_LED_ON_L = 0xFA;
     const ALL_LED_ON_H = 0xFB;
     const ALL_LED_OFF_L = 0xFC;
@@ -138,7 +140,7 @@ namespace BitBot {
         PRESCALE_FREQUENCY -= 1;
 
         let oldmode = i2cread(MODE1);
-        let newmode = (oldmode & 0x7F) | 0x10;
+        let newmode = (oldmode & 0x7F) | LED2_OFF_L;
 
         writeI2C(MODE1, newmode);
         writeI2C(PRESCALE_FREQUENCY, PRESCALE_FREQUENCY);
