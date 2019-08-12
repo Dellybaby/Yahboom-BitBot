@@ -1,4 +1,3 @@
-//////////////////////////////////////////////////////////////
 /*
 Copyright 2019 GHIElectronics, LLC
 
@@ -14,11 +13,9 @@ distributed under the License is distributed on an "AS IS" BASIS,
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-//////////////////////////////////////////////////////////////////////////
+
 //% color="#006400" weight=20 icon="\uf1b9"
 //% groups='["Motors", "Distance Sensor", "Line Reader","Headlights", "Music", "Servo"]'
-
-let SmartStrip: neopixel.Strip;
 
 namespace BitBot {
     const I2C_ADDRESS = 0x41;
@@ -38,19 +35,26 @@ namespace BitBot {
     const ALL_LED_OFF_L = 0xFC;
     const ALL_LED_OFF_H = 0xFD;
 
-    const redPin = 0;
-    const greenPin = 1;
-    const bluePin = 2;
-    const LeftLineSensor = 7;
-    const RightLineSensor = 6;
-    const LeftMotorForwardPin = 12
-    const LeftMotorBackwardPin = 13
-    const RightMotorForwardPin = 15
-    const RightMotorBackwardPin = 14
+    const RED_PIN = 0;
+    const GREEN_PIN = 1;
+    const BLUE_PIN = 2;
+    const LEFT_LINE_SENSOR = 7;
+    const RIGHT_LINE_SENSOR = 6;
+    const LEFT_MOTOR_FORWARD_PIN = 12;
+    const LEFT_MOTOR_BACKWARD_PIN = 13;
+    const RIGHT_MOTOR_FORWARD_PIN = 15;
+    const RIGHT_MOTOR_BACKWARD_PIN = 14;
 
-    const PRESCALE = 0xFE;
+    const OBJECT_DETECTION_SENSOR_PIN = DigitalPin.P9;
+    const OBJECT_DETECTION_SENSOR_VALUE_PIN = AnalogPin.P3;
+    const ULTRASONIC_TRIG_PIN = DigitalPin.P14;
+    const ULTRASONIC_ECHO_PIN = DigitalPin.P15;
 
-    let initialized = false;
+    let SMART_STRIP: neopixel.Strip;
+
+    const PRESCALE_FREQUENCY = 0xFE;
+
+    let INITIALIZED = false;
 
     export enum Postion {
         //% blockId="LeftState" block="Left"
@@ -82,13 +86,13 @@ namespace BitBot {
         //% block="cm"
         Centimeters,
         //% block="μs"
-        MicroSeconds
+        Microseconds
     }
 
     export enum Motors {
-        LeftMotor,
-        RightMotor,
-        BothMotor
+        Left,
+        Right,
+        Both
     }
 
     export enum Servo {
@@ -124,20 +128,20 @@ namespace BitBot {
         writeI2C(MODE1, 0x00);
         setFreq(50);
 
-        initialized = true;
+        INITIALIZED = true;
     }
 
     function setFreq(freq: number): void {
-        let prescale = 25000000;
-        prescale /= 4096;
-        prescale /= freq;
-        prescale -= 1;
+        let PRESCALE_FREQUENCY = 25000000;
+        PRESCALE_FREQUENCY /= 4096;
+        PRESCALE_FREQUENCY /= freq;
+        PRESCALE_FREQUENCY -= 1;
 
         let oldmode = i2cread(MODE1);
         let newmode = (oldmode & 0x7F) | 0x10;
 
         writeI2C(MODE1, newmode);
-        writeI2C(PRESCALE, prescale);
+        writeI2C(PRESCALE_FREQUENCY, PRESCALE_FREQUENCY);
         writeI2C(MODE1, oldmode);
 
         control.waitMicros(5000);
@@ -149,7 +153,7 @@ namespace BitBot {
         if (channel < 0 || channel > 15)
             return;
 
-        if (!initialized)
+        if (!INITIALIZED)
             initPCA9685();
 
         let buf = pins.createBuffer(5);
@@ -171,7 +175,7 @@ namespace BitBot {
     //% b.min=0 b.max=100
     //% group="Headlights"
     //% color="#006400"
-    export function rgblight(r: number, g: number, b: number): void {
+    export function setLedColor(r: number, g: number, b: number): void {
         let buf = pins.createBuffer(4);
         //scaling since 255 wont mean anything to a teacher/student 
         //User sees a value of 100 while program sees the value 255
@@ -184,9 +188,9 @@ namespace BitBot {
         if (g > 4096) g = 4095;
         if (b > 4096) b = 4095;
 
-        setPwm(redPin, 0, r);
-        setPwm(greenPin, 0, g);
-        setPwm(bluePin, 0, b);
+        setPwm(RED_PIN, 0, r);
+        setPwm(GREEN_PIN, 0, g);
+        setPwm(BLUE_PIN, 0, b);
     }
 
     //% weight=71
@@ -199,22 +203,23 @@ namespace BitBot {
         let pin = direction === Postion.LeftState ? AnalogPin.P2 : AnalogPin.P1;
 
         if (pins.analogReadPin(pin) < 500) {
-            setPwm(LeftLineSensor, 0, 4095);
+            setPwm(LEFT_LINE_SENSOR, 0, 4095);
 
             return value === LineState.White;
         }
         else {
-            setPwm(LeftLineSensor, 0, 0);
+            setPwm(LEFT_LINE_SENSOR, 0, 0);
 
             return value === LineState.Black;
         }
+
         if (pins.analogReadPin(pin) < 500) {
-            setPwm(RightLineSensor, 0, 4095);
+            setPwm(RIGHT_LINE_SENSOR, 0, 4095);
 
             return value === LineState.White;
         }
         else {
-            setPwm(RightLineSensor, 0, 0);
+            setPwm(RIGHT_LINE_SENSOR, 0, 0);
 
             return value === LineState.Black;
         }
@@ -222,46 +227,36 @@ namespace BitBot {
 
     //% weight=100
     //% group="Motors"
-    //% blockId=ControlCar block="Set %whichmotor to %dir at the speed of %speed"
+    //% blockId=ControlCar block="Set %which to %dir at the speed of %speed"
     //% speed.defl=100
     //% color="#006400"
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=10
-    export function ControlCarMotors(whichmotor: Motors, dir: Direction, speed: number): void {
+    export function setMotorSpeed(which: Motors, dir: Direction, speed: number): void {
         speed *= 40;
-
 
         if (speed < 400) {
             speed = 400
         }
 
-        if (whichmotor == Motors.LeftMotor || whichmotor == Motors.BothMotor) {
+        if (which == Motors.Left || which == Motors.Both) {
             if (dir == Direction.forward) {
-                BuildingBit.setPwm(LeftMotorForwardPin, 0, speed);
-                BuildingBit.setPwm(LeftMotorBackwardPin, 0, 0);
+                BitBot.setPwm(LEFT_MOTOR_FORWARD_PIN, 0, speed);
+                BitBot.setPwm(LEFT_MOTOR_BACKWARD_PIN, 0, 0);
             }
             else if (dir == Direction.backward) {
-                BuildingBit.setPwm(LeftMotorForwardPin, 0, 0);
-                BuildingBit.setPwm(LeftMotorBackwardPin, 0, speed);
+                BitBot.setPwm(LEFT_MOTOR_FORWARD_PIN, 0, 0);
+                BitBot.setPwm(LEFT_MOTOR_BACKWARD_PIN, 0, speed);
             }
-            else {
-                BuildingBit.setPwm(LeftMotorForwardPin, 0, 0);
-                BuildingBit.setPwm(LeftMotorBackwardPin, 0, 0);
-            }
-
         }
 
-        if (whichmotor == Motors.RightMotor || whichmotor == Motors.BothMotor) {
+        if (which == Motors.Right || which == Motors.Both) {
             if (dir == Direction.forward) {
-                BuildingBit.setPwm(RightMotorForwardPin, 0, speed);
-                BuildingBit.setPwm(RightMotorBackwardPin, 0, 0);
+                BitBot.setPwm(RIGHT_MOTOR_FORWARD_PIN, 0, speed);
+                BitBot.setPwm(RIGHT_MOTOR_BACKWARD_PIN, 0, 0);
             }
             else if (dir == Direction.backward) {
-                BuildingBit.setPwm(RightMotorForwardPin, 0, 0);
-                BuildingBit.setPwm(RightMotorBackwardPin, 0, speed);
-            }
-            else {
-                BuildingBit.setPwm(RightMotorForwardPin, 0, 0);
-                BuildingBit.setPwm(RightMotorBackwardPin, 0, 0);
+                BitBot.setPwm(RIGHT_MOTOR_FORWARD_PIN, 0, 0);
+                BitBot.setPwm(RIGHT_MOTOR_BACKWARD_PIN, 0, speed);
             }
         }
     }
@@ -271,12 +266,12 @@ namespace BitBot {
     //% blockId=mbit_CarStop block="Stop motors"
     //% color="#006400"
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=10
-    export function StopCar(): void {
-        BuildingBit.setPwm(LeftMotorForwardPin, 0, 0);
-        BuildingBit.setPwm(LeftMotorBackwardPin, 0, 0);
+    export function setMotorsOff(): void {
+        BitBot.setPwm(LEFT_MOTOR_FORWARD_PIN, 0, 0);
+        BitBot.setPwm(LEFT_MOTOR_BACKWARD_PIN, 0, 0);
 
-        BuildingBit.setPwm(RightMotorForwardPin, 0, 0);
-        BuildingBit.setPwm(RightMotorBackwardPin, 0, 0);
+        BitBot.setPwm(RIGHT_MOTOR_FORWARD_PIN, 0, 0);
+        BitBot.setPwm(RIGHT_MOTOR_BACKWARD_PIN, 0, 0);
     }
 
     //% blockId=RGB_Car_Program block="Smart leds"
@@ -284,11 +279,10 @@ namespace BitBot {
     //% group="Headlights"    
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=4
     //% color="#006400"
-    export function RGB_Car_Program(): neopixel.Strip {
-        if (SmartStrip === null || SmartStrip === undefined) {
-            SmartStrip = neopixel.create(DigitalPin.P16, 3, NeoPixelMode.RGB);
-        }
-        return SmartStrip;
+    export function ControlCarSmartLeds(): neopixel.Strip {
+        SMART_STRIP !== null && SMART_STRIP !== undefined ? SMART_STRIP : (SMART_STRIP = neopixel.create(DigitalPin.P16, 3, NeoPixelMode.RGB));
+
+        return SMART_STRIP;
     }
 
     //% blockId=mbit_Music_Car block="Play %index"
@@ -296,7 +290,7 @@ namespace BitBot {
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=4
     //% weight=40
     //% group="Music"   
-    export function Music_Car(melody: Melodies): void {
+    export function playMelody(melody: Melodies): void {
         music.beginMelody(music.builtInMelody(melody), MelodyOptions.Once);
     }
 
@@ -307,7 +301,7 @@ namespace BitBot {
     //% color="#006400"
     //% num.min=1 num.max=3 value.min=0 value.max=180
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=9
-    export function Servo_Car(num: Servo, value: number): void {
+    export function setServo(num: Servo, value: number): void {
         // 50hz: 20,000 us
         let us = (value * 1800 / 180 + 600); // 0.6 ~ 2.4
         let pwm = us * 4096 / 20000;
@@ -320,37 +314,34 @@ namespace BitBot {
     //% color="#006400"
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=12
     //% group="Object Sensor"
-    export function Avoid_Sensor(value: AvoidState): boolean {
-        let AvoidValue: boolean = false;
-        pins.digitalWritePin(DigitalPin.P9, 0);
-        switch (value) {
-            case AvoidState.Obstacle: {
-                if (pins.analogReadPin(AnalogPin.P3) < 800) {
+    export function readObjectDetectionSensor(value: AvoidState): boolean {
+        let result: boolean = false;
+        pins.digitalWritePin(OBJECT_DETECTION_SENSOR_PIN, 0);
+        if (value === AvoidState.Obstacle) {
+            if (pins.analogReadPin(OBJECT_DETECTION_SENSOR_VALUE_PIN) < 800) {
 
-                    AvoidValue = true;
-                    setPwm(8, 0, 0);
-                }
-                else {
-                    AvoidValue = false;
-                    setPwm(8, 0, 4095);
-                }
-                break;
+                result = true;
+                setPwm(8, 0, 0);
             }
-            case AvoidState.NoObstacle: {
-                if (pins.analogReadPin(AnalogPin.P3) > 800) {
-
-                    AvoidValue = true;
-                    setPwm(8, 0, 4095);
-                }
-                else {
-                    AvoidValue = false;
-                    setPwm(8, 0, 0);
-                }
-                break;
+            else {
+                result = false;
+                setPwm(8, 0, 4095);
             }
         }
-        pins.digitalWritePin(DigitalPin.P9, 1);
-        return AvoidValue;
+        else {
+            if (pins.analogReadPin(OBJECT_DETECTION_SENSOR_VALUE_PIN) > 800) {
+
+                result = true;
+                setPwm(8, 0, 4095);
+            }
+            else {
+                result = false;
+                setPwm(8, 0, 0);
+            }
+        }
+
+        pins.digitalWritePin(OBJECT_DETECTION_SENSOR_PIN, 1);
+        return result;
     }
 
     //% weight=30
@@ -360,23 +351,19 @@ namespace BitBot {
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=4
     export function readUltrasonicSensor(unit: PingUnit): number {
         // send pulse
-        pins.setPull(DigitalPin.P14, PinPullMode.PullNone);
-        pins.digitalWritePin(DigitalPin.P14, 0);
+        pins.setPull(ULTRASONIC_TRIG_PIN, PinPullMode.PullNone);
+        pins.digitalWritePin(ULTRASONIC_TRIG_PIN, 0);
         control.waitMicros(2);
-        pins.digitalWritePin(DigitalPin.P14, 1);
+        pins.digitalWritePin(ULTRASONIC_TRIG_PIN, 1);
         control.waitMicros(15);
-        pins.digitalWritePin(DigitalPin.P14, 0);
+        pins.digitalWritePin(ULTRASONIC_TRIG_PIN, 0);
 
         // read pulse
-        pins.setPull(DigitalPin.P15, PinPullMode.PullUp);
+        pins.setPull(ULTRASONIC_ECHO_PIN, PinPullMode.PullUp);
 
-        let d = pins.pulseIn(DigitalPin.P15, PulseValue.High, 21000);
+        let d = pins.pulseIn(ULTRASONIC_ECHO_PIN, PulseValue.High, 21000);
 
         d = Math.round(d);
-
-        console.log("Distance: " + d);
-
-        basic.pause(50)
 
         return d;
     }
